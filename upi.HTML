@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UPI Pro App</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+body {font-family: Arial; background:#f2f2f2; margin:0;}
+.header {background:linear-gradient(90deg,#6a11cb,#2575fc); color:white; padding:15px; text-align:center;}
+.section {background:white; margin:10px; padding:15px; border-radius:12px;}
+.grid {display:grid; grid-template-columns:repeat(4,1fr); gap:15px; text-align:center;}
+.item {cursor:pointer;}
+.circle {width:60px;height:60px;background:#6a11cb;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;margin:auto;font-size:22px;}
+.title {font-size:13px;margin-top:5px;}
+
+.screen {display:none;padding:20px;}
+input,select {width:90%;padding:10px;margin:8px 0;border-radius:6px;border:1px solid #ccc;}
+button {padding:10px;width:95%;background:#6a11cb;color:white;border:none;border-radius:6px;margin-top:5px;}
+
+.footer {position:fixed;bottom:0;width:100%;background:white;display:flex;justify-content:space-around;padding:10px;border-top:1px solid #ccc;}
+.card {border:1px solid #ddd;padding:10px;margin:6px;border-radius:8px;}
+</style>
+</head>
+
+<body>
+
+<div id="home">
+
+<div class="header">UPI Pro App</div>
+
+<div class="section">
+<b>Money Transfers</b>
+<div class="grid">
+<div class="item" onclick="show('mobile')"><div class="circle">📞</div><div class="title">Mobile</div></div>
+<div class="item" onclick="show('bank')"><div class="circle">🏦</div><div class="title">Bank</div></div>
+<div class="item" onclick="show('qr')"><div class="circle">🔳</div><div class="title">QR</div></div>
+<div class="item" onclick="show('balance')"><div class="circle">₹</div><div class="title">Balance</div></div>
+</div>
+</div>
+
+<div class="section">
+<b>More</b>
+<div class="grid">
+<div class="item" onclick="show('history')"><div class="circle">🕘</div><div class="title">History</div></div>
+</div>
+</div>
+
+</div>
+
+<!-- MOBILE -->
+<div id="mobile" class="screen">
+<button onclick="back()">⬅ Back</button>
+
+<div id="step1">
+<input id="mobileInput" placeholder="Mobile Number">
+<button onclick="nextStep()">Next</button>
+</div>
+
+<div id="step2" style="display:none;">
+<p id="mobShow"></p>
+<input id="amtMobile" placeholder="Amount">
+<button onclick="askPin('Mobile')">Next</button>
+</div>
+</div>
+
+<!-- BANK -->
+<div id="bank" class="screen">
+<button onclick="back()">⬅ Back</button>
+<select><option>SBI</option><option>HDFC</option><option>ICICI</option></select>
+<input placeholder="Account Number">
+<input placeholder="IFSC">
+<input id="amtBank" placeholder="Amount">
+<button onclick="askPin('Bank')">Next</button>
+</div>
+
+<!-- QR -->
+<div id="qr" class="screen">
+<button onclick="back()">⬅ Back</button>
+<div id="reader"></div>
+<p id="qrResult"></p>
+<input id="amtQR" placeholder="Amount">
+<button onclick="askPin('QR')">Next</button>
+</div>
+
+<!-- PIN -->
+<div id="pin" class="screen">
+<h3>Enter PIN</h3>
+<input id="pinInput" type="password">
+<button onclick="finalPay()">Pay</button>
+<p id="status"></p>
+</div>
+
+<!-- BALANCE -->
+<div id="balance" class="screen">
+<button onclick="back()">⬅ Back</button>
+<h3 id="bal"></h3>
+</div>
+
+<!-- HISTORY -->
+<div id="history" class="screen">
+<button onclick="back()">⬅ Back</button>
+<div id="hist"></div>
+</div>
+
+<!-- RECEIPT -->
+<div id="receipt" class="screen"></div>
+
+<div class="footer">
+<div onclick="back()">🏠</div>
+<div onclick="show('history')">🕘</div>
+</div>
+
+<script>
+
+// LOAD DATA
+let balance = localStorage.getItem("balance") || 5000;
+let transactions = JSON.parse(localStorage.getItem("txn")) || [];
+let currentTxn=null, mode="", amt=0;
+
+// NAV
+function show(id){
+document.getElementById("home").style.display="none";
+document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+document.getElementById(id).style.display="block";
+
+if(id==="balance"){
+document.getElementById("bal").innerText="₹"+balance;
+}
+
+if(id==="history"){
+document.getElementById("hist").innerHTML =
+transactions.map(t=>`
+<div class="card" onclick="openReceipt('${t.id}')">
+${t.mode} ₹${t.amount}<br>${t.time}
+</div>`).join("") || "No Data";
+}
+
+if(id==="qr"){startQR();}
+}
+
+function back(){
+document.getElementById("home").style.display="block";
+document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+}
+
+// MOBILE FLOW
+function nextStep(){
+let m=document.getElementById("mobileInput").value;
+if(m.length<10){alert("Enter valid number");return;}
+document.getElementById("step1").style.display="none";
+document.getElementById("step2").style.display="block";
+document.getElementById("mobShow").innerText="To: "+m;
+}
+
+// ASK PIN
+function askPin(type){
+mode=type;
+amt = document.getElementById("amt"+type)?.value || document.getElementById("amtMobile")?.value;
+
+if(!amt){alert("Enter amount");return;}
+
+show('pin');
+}
+
+// FINAL PAY
+function finalPay(){
+let pin=document.getElementById("pinInput").value;
+
+if(pin!=="2332"){document.getElementById("status").innerText="Wrong PIN";return;}
+if(amt>balance){alert("Low balance");return;}
+
+balance-=amt;
+
+let txn={
+id:"TXN"+Date.now(),
+mode:mode,
+amount:amt,
+time:new Date().toLocaleString()
+};
+
+transactions.push(txn);
+
+// SAVE DATA
+localStorage.setItem("balance", balance);
+localStorage.setItem("txn", JSON.stringify(transactions));
+
+currentTxn=txn;
+showReceipt(txn);
+}
+
+// RECEIPT
+function showReceipt(txn){
+document.getElementById("receipt").innerHTML=`
+<h3>Payment Receipt</h3>
+<p>ID: ${txn.id}</p>
+<p>Mode: ${txn.mode}</p>
+<p>Amount: ₹${txn.amount}</p>
+<p>Time: ${txn.time}</p>
+
+<button onclick="shareReceipt()">Share</button>
+`;
+show('receipt');
+}
+
+// OPEN RECEIPT
+function openReceipt(id){
+let txn=transactions.find(t=>t.id===id);
+if(txn) showReceipt(txn);
+}
+
+// SHARE
+function shareReceipt(){
+let text=`UPI Receipt\nID:${currentTxn.id}\n₹${currentTxn.amount}\n${currentTxn.time}`;
+navigator.clipboard.writeText(text);
+alert("Copied! Share anywhere");
+}
+
+// QR
+function startQR(){
+if(window.qrStarted) return;
+window.qrStarted=true;
+
+const scanner=new Html5Qrcode("reader");
+scanner.start({facingMode:"environment"},{fps:10},(text)=>{
+document.getElementById("qrResult").innerText="Scanned: "+text;
+scanner.stop();
+});
+}
+
+</script>
+
+</body>
+</html>
